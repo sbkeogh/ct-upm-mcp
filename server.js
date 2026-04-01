@@ -589,15 +589,12 @@ function handleToolCall(name, args) {
   }
 }
 
-// Track active transports for session management
-const transports = {};
-
 /**
- * Create and configure the MCP server for a session
+ * Create and configure a fresh MCP server instance
  */
 function createMcpServer() {
   const server = new Server(
-    { name: 'ct-upm', version: '2.0.0' },
+    { name: 'ct-upm', version: '2.1.0' },
     { capabilities: { tools: {} } }
   );
 
@@ -618,6 +615,11 @@ function createMcpServer() {
 
 /**
  * HTTP request handler
+ *
+ * Uses stateless mode: each request creates a fresh server+transport.
+ * This is required for multi-machine deployments (Fly.io, etc.) where
+ * requests may hit different instances. Since the database is read-only,
+ * there's no session state to preserve.
  */
 async function handleRequest(req, res) {
   // CORS headers
@@ -648,49 +650,35 @@ async function handleRequest(req, res) {
   if (url.pathname === '/health' && req.method === 'GET') {
     const sc = stmts.sectionCount.get();
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', sections: sc.count, version: '2.0.0' }));
+    res.end(JSON.stringify({ status: 'ok', sections: sc.count, version: '2.1.0' }));
     return;
   }
 
-  // MCP endpoint
+  // MCP endpoint — stateless: every POST gets a fresh server+transport
   if (url.pathname === '/mcp') {
-    // Check for existing session
-    const sessionId = req.headers['mcp-session-id'];
+    if (req.method === 'POST') {
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined, // Stateless — no session tracking
+      });
 
-    if (req.method === 'GET' || req.method === 'POST') {
-      // For GET (SSE) or POST with existing session
-      if (sessionId && transports[sessionId]) {
-        const transport = transports[sessionId];
-        await transport.handleRequest(req, res);
-        return;
-      }
-
-      // New session (POST without session ID, or initial request)
-      if (req.method === 'POST') {
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sid) => {
-            transports[sid] = transport;
-          }
-        });
-
-        // Clean up on close
-        transport.onclose = () => {
-          const sid = Object.keys(transports).find(k => transports[k] === transport);
-          if (sid) delete transports[sid];
-        };
-
-        const server = createMcpServer();
-        await server.connect(transport);
-        await transport.handleRequest(req, res);
-        return;
-      }
+      const server = createMcpServer();
+      await server.connect(transport);
+      await transport.handleRequest(req, res);
+      // Transport is discarded after response — no state to leak
+      return;
     }
 
-    if (req.method === 'DELETE' && sessionId && transports[sessionId]) {
-      const transport = transports[sessionId];
-      await transport.handleRequest(req, res);
-      delete transports[sessionId];
+    if (req.method === 'GET') {
+      // SSE not supported in stateless mode
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'SSE not supported. Use POST.' }));
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      // No sessions to delete in stateless mode
+      res.writeHead(200);
+      res.end();
       return;
     }
 
