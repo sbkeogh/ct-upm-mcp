@@ -74,6 +74,19 @@ async function exportToSqlite() {
       content TEXT,
       source_url TEXT
     );
+
+    CREATE TABLE hearing_decisions (
+      id INTEGER PRIMARY KEY,
+      decision_number TEXT NOT NULL UNIQUE,
+      category TEXT NOT NULL,
+      year INTEGER,
+      case_number TEXT,
+      title TEXT,
+      content TEXT,
+      source_url TEXT,
+      word_count INTEGER DEFAULT 0,
+      page_count INTEGER DEFAULT 0
+    );
   `);
 
   // Export chapters
@@ -124,6 +137,22 @@ async function exportToSqlite() {
   insertTransmittals(transmittals);
   console.log(`  ${transmittals.length} transmittals`);
 
+  // Export hearing decisions
+  console.log('Exporting hearing decisions...');
+  const hearings = await conn.query(
+    'SELECT id, decision_number, category, year, case_number, title, content, source_url, word_count, page_count FROM hearing_decisions ORDER BY id'
+  );
+  const insertHearing = db.prepare(
+    'INSERT INTO hearing_decisions (id, decision_number, category, year, case_number, title, content, source_url, word_count, page_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  );
+  const insertHearings = db.transaction((rows) => {
+    for (const row of rows) {
+      insertHearing.run(row.id, row.decision_number, row.category, row.year, row.case_number, row.title, row.content, row.source_url, row.word_count, row.page_count);
+    }
+  });
+  insertHearings(hearings);
+  console.log(`  ${hearings.length} hearing decisions`);
+
   // Create FTS5 virtual tables for full-text search
   console.log('Creating full-text search indexes...');
 
@@ -149,6 +178,17 @@ async function exportToSqlite() {
 
     INSERT INTO transmittals_fts(rowid, transmittal_number, title, content)
     SELECT id, transmittal_number, title, content FROM transmittals;
+
+    CREATE VIRTUAL TABLE hearings_fts USING fts5(
+      decision_number,
+      title,
+      content,
+      content=hearing_decisions,
+      content_rowid=id
+    );
+
+    INSERT INTO hearings_fts(rowid, decision_number, title, content)
+    SELECT id, decision_number, title, content FROM hearing_decisions;
   `);
 
   // Create regular indexes
@@ -156,6 +196,9 @@ async function exportToSqlite() {
     CREATE INDEX idx_sections_chapter ON sections(chapter_id);
     CREATE INDEX idx_sections_number ON sections(section_number);
     CREATE INDEX idx_transmittals_year ON transmittals(year);
+    CREATE INDEX idx_hearings_category ON hearing_decisions(category);
+    CREATE INDEX idx_hearings_year ON hearing_decisions(year);
+    CREATE INDEX idx_hearings_number ON hearing_decisions(decision_number);
   `);
 
   // Verify
@@ -163,9 +206,12 @@ async function exportToSqlite() {
   const transmittalCount = db.prepare('SELECT COUNT(*) as count FROM transmittals').get();
   const withContent = db.prepare('SELECT COUNT(*) as count FROM sections WHERE word_count > 0').get();
 
+  const hearingCount = db.prepare('SELECT COUNT(*) as count FROM hearing_decisions').get();
+
   console.log('\n=== Export Complete ===');
   console.log(`Sections: ${sectionCount.count} (${withContent.count} with content)`);
   console.log(`Transmittals: ${transmittalCount.count}`);
+  console.log(`Hearing decisions: ${hearingCount.count}`);
   console.log(`Database: ${OUTPUT_PATH}`);
 
   const stats = fs.statSync(OUTPUT_PATH);

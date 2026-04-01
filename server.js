@@ -185,6 +185,47 @@ const stmts = {
     FROM transmittals
     WHERE (content LIKE ? OR content LIKE ? OR title LIKE ?) AND year >= ?
     ORDER BY year DESC, sequence DESC LIMIT 10
+  `),
+  // Hearing decision statements
+  searchHearingsFts: db.prepare(`
+    SELECT h.id, h.decision_number, h.category, h.year, h.case_number, h.title,
+           h.word_count, h.page_count, rank
+    FROM hearings_fts fts
+    JOIN hearing_decisions h ON fts.rowid = h.id
+    WHERE hearings_fts MATCH ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchHearingsFtsCat: db.prepare(`
+    SELECT h.id, h.decision_number, h.category, h.year, h.case_number, h.title,
+           h.word_count, h.page_count, rank
+    FROM hearings_fts fts
+    JOIN hearing_decisions h ON fts.rowid = h.id
+    WHERE hearings_fts MATCH ? AND h.category LIKE ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchHearingsFtsYear: db.prepare(`
+    SELECT h.id, h.decision_number, h.category, h.year, h.case_number, h.title,
+           h.word_count, h.page_count, rank
+    FROM hearings_fts fts
+    JOIN hearing_decisions h ON fts.rowid = h.id
+    WHERE hearings_fts MATCH ? AND h.year = ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchHearingsFtsCatYear: db.prepare(`
+    SELECT h.id, h.decision_number, h.category, h.year, h.case_number, h.title,
+           h.word_count, h.page_count, rank
+    FROM hearings_fts fts
+    JOIN hearing_decisions h ON fts.rowid = h.id
+    WHERE hearings_fts MATCH ? AND h.category LIKE ? AND h.year = ?
+    ORDER BY rank LIMIT ?
+  `),
+  getHearing: db.prepare('SELECT * FROM hearing_decisions WHERE decision_number = ?'),
+  getHearingContent: db.prepare('SELECT content FROM hearing_decisions WHERE decision_number = ?'),
+  hearingCount: db.prepare('SELECT COUNT(*) as count FROM hearing_decisions'),
+  hearingCategoryBreakdown: db.prepare(`
+    SELECT category, COUNT(*) as count, SUM(word_count) as total_words,
+           MIN(year) as min_year, MAX(year) as max_year
+    FROM hearing_decisions GROUP BY category ORDER BY category
   `)
 };
 
@@ -311,6 +352,36 @@ const TOOLS = [
         category: { type: 'string', enum: ['all', 'assets', 'income', 'penalty', 'spousal'], description: 'Category. Default: all' }
       }
     }
+  },
+  {
+    name: 'hearing_search',
+    description: 'Search CT DSS fair hearing decisions (administrative appeals). ~4,400 decisions covering LTSS eligibility, medical services, other Medicaid eligibility, and SNAP. Use to find how DSS has ruled on specific issues like transfer penalties, asset exemptions, income calculations, or service denials.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query (e.g., "transfer penalty home", "annuity Medicaid", "SNAP eligibility")' },
+        category: { type: 'string', description: 'Filter: LTSS Eligibility, Medical Services, Other Medicaid Eligibility, SNAP Eligibility' },
+        year: { type: 'integer', description: 'Filter by year (2013-2024)' },
+        limit: { type: 'integer', description: 'Max results (default 10, max 20)', default: 10 }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'hearing_get',
+    description: 'Get the full text of a specific fair hearing decision by decision number. Use after searching.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        decision_number: { type: 'string', description: 'The decision number (e.g., "LTEL_2024_214656")' }
+      },
+      required: ['decision_number']
+    }
+  },
+  {
+    name: 'hearing_stats',
+    description: 'Get statistics on the fair hearing decisions database — total count, breakdown by category and year.',
+    inputSchema: { type: 'object', properties: {} }
   }
 ];
 
@@ -582,6 +653,71 @@ function handleToolCall(name, args) {
       result.source = 'Values from UPM sections 4000-4999 (assets), 5000-5999 (income). Verify in applicable sections.';
       result.last_updated = '2024';
       return result;
+    }
+
+    case 'hearing_search': {
+      const { query, category, year, limit = 10 } = args;
+      const resultLimit = Math.min(limit, MAX_RESULTS);
+      const ftsQuery = sanitizeFtsQuery(query);
+      if (!ftsQuery) return { error: 'Query too short' };
+
+      let results;
+      if (category && year) {
+        results = stmts.searchHearingsFtsCatYear.all(ftsQuery, `%${category}%`, year, resultLimit);
+      } else if (category) {
+        results = stmts.searchHearingsFtsCat.all(ftsQuery, `%${category}%`, resultLimit);
+      } else if (year) {
+        results = stmts.searchHearingsFtsYear.all(ftsQuery, year, resultLimit);
+      } else {
+        results = stmts.searchHearingsFts.all(ftsQuery, resultLimit);
+      }
+
+      const searchTerms = query.split(/\s+/).filter(t => t.length > 2);
+      const enriched = results.map(row => {
+        const content = stmts.getHearingContent.get(row.decision_number);
+        return {
+          decision_number: row.decision_number,
+          category: row.category,
+          year: row.year,
+          case_number: row.case_number,
+          title: row.title,
+          word_count: row.word_count,
+          page_count: row.page_count,
+          snippet: extractSnippet(content?.content, searchTerms)
+        };
+      });
+
+      return { query, results_count: enriched.length, results: enriched };
+    }
+
+    case 'hearing_get': {
+      const result = stmts.getHearing.get(args.decision_number);
+      if (!result) return { error: `Decision ${args.decision_number} not found` };
+      return {
+        decision_number: result.decision_number,
+        category: result.category,
+        year: result.year,
+        case_number: result.case_number,
+        title: result.title,
+        word_count: result.word_count,
+        page_count: result.page_count,
+        content: truncate(result.content, MAX_CONTENT_LENGTH),
+        source_url: result.source_url
+      };
+    }
+
+    case 'hearing_stats': {
+      const hc = stmts.hearingCount.get();
+      const cats = stmts.hearingCategoryBreakdown.all();
+      return {
+        total_decisions: hc.count,
+        categories: cats.map(r => ({
+          category: r.category,
+          decisions: r.count,
+          words: r.total_words,
+          year_range: `${r.min_year}-${r.max_year}`
+        }))
+      };
     }
 
     default:
