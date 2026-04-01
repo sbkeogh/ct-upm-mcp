@@ -111,28 +111,30 @@ db.pragma('journal_mode = WAL');
 
 // Prepared statements
 const stmts = {
+  // Search: current sections first, superseded last
   searchFts: db.prepare(`
     SELECT s.id, s.section_number, s.title, s.word_count, c.chapter_number,
-           rank
+           s.superseded_by, s.effective_date, rank
     FROM sections_fts fts
     JOIN sections s ON fts.rowid = s.id
     JOIN chapters c ON s.chapter_id = c.id
     WHERE sections_fts MATCH ?
-    ORDER BY rank
+    ORDER BY (CASE WHEN s.superseded_by IS NOT NULL THEN 1 ELSE 0 END), rank
     LIMIT ?
   `),
   searchFtsChapter: db.prepare(`
     SELECT s.id, s.section_number, s.title, s.word_count, c.chapter_number,
-           rank
+           s.superseded_by, s.effective_date, rank
     FROM sections_fts fts
     JOIN sections s ON fts.rowid = s.id
     JOIN chapters c ON s.chapter_id = c.id
     WHERE sections_fts MATCH ? AND c.chapter_number = ?
-    ORDER BY rank
+    ORDER BY (CASE WHEN s.superseded_by IS NOT NULL THEN 1 ELSE 0 END), rank
     LIMIT ?
   `),
   getSection: db.prepare(`
-    SELECT s.*, c.chapter_number, c.title as chapter_title
+    SELECT s.*, c.chapter_number, c.title as chapter_title,
+           s.superseded_by, s.effective_date
     FROM sections s JOIN chapters c ON s.chapter_id = c.id
     WHERE s.section_number = ?
   `),
@@ -199,7 +201,7 @@ function sanitizeFtsQuery(query) {
 const TOOLS = [
   {
     name: 'upm_search',
-    description: 'Search the Connecticut DSS Uniform Policy Manual for policy sections matching keywords. Returns section numbers, titles, and content snippets. Use this to find policies about Medicaid eligibility, assets, income, transfer penalties, and other welfare program rules.',
+    description: 'Search the Connecticut DSS Uniform Policy Manual for policy sections matching keywords. Returns section numbers, titles, and content snippets. Current policy is ranked above superseded versions. Results include currency warnings when a section has been replaced by a newer one (e.g., section 3028 was superseded by 3029 after the Deficit Reduction Act of 2005).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -330,13 +332,19 @@ function handleToolCall(name, args) {
       const searchTerms = query.split(/\s+/).filter(t => t.length > 2);
       const enriched = results.map(row => {
         const content = stmts.getSectionContent.get(row.section_number);
-        return {
+        const result = {
           section_number: row.section_number,
           chapter: row.chapter_number,
           title: row.title,
           word_count: row.word_count,
           snippet: extractSnippet(content?.content, searchTerms)
         };
+        if (row.superseded_by) {
+          result.superseded_by = row.superseded_by;
+          result.currency_warning = `This section has been superseded by ${row.superseded_by}. Use the newer section for current policy.`;
+        }
+        if (row.effective_date) result.effective_date = row.effective_date;
+        return result;
       });
 
       return { query, results_count: enriched.length, results: enriched };
@@ -345,7 +353,7 @@ function handleToolCall(name, args) {
     case 'upm_get_section': {
       const result = stmts.getSection.get(args.section_number);
       if (!result) return { error: `Section ${args.section_number} not found` };
-      return {
+      const response = {
         section_number: result.section_number,
         chapter: result.chapter_number,
         chapter_title: result.chapter_title,
@@ -354,6 +362,12 @@ function handleToolCall(name, args) {
         content: truncate(result.content, MAX_CONTENT_LENGTH),
         source_url: result.source_url
       };
+      if (result.superseded_by) {
+        response.superseded_by = result.superseded_by;
+        response.currency_warning = `WARNING: This section has been superseded by ${result.superseded_by}. The current policy is in section ${result.superseded_by}. This older version may still apply to cases involving events before the newer section's effective date.`;
+      }
+      if (result.effective_date) response.effective_date = result.effective_date;
+      return response;
     }
 
     case 'upm_list_chapters': {
@@ -434,7 +448,13 @@ function handleToolCall(name, args) {
         const results = stmts.searchFtsChapter.all(ftsQuery, chapter, config.searchLimit);
         allResults.push(...results);
       }
-      allResults.sort((a, b) => a.rank - b.rank); // FTS5 rank: lower is better
+      // Sort: current sections first, then by relevance rank
+      allResults.sort((a, b) => {
+        const aSuperseded = a.superseded_by ? 1 : 0;
+        const bSuperseded = b.superseded_by ? 1 : 0;
+        if (aSuperseded !== bSuperseded) return aSuperseded - bSuperseded;
+        return a.rank - b.rank;
+      });
       const topResults = allResults.slice(0, config.searchLimit);
 
       // Get full content and extract cross-refs

@@ -60,6 +60,8 @@ async function exportToSqlite() {
       source_url TEXT,
       file_type TEXT,
       word_count INTEGER,
+      effective_date TEXT,
+      superseded_by TEXT,
       UNIQUE(chapter_id, section_number)
     );
 
@@ -90,15 +92,16 @@ async function exportToSqlite() {
   // Export sections
   console.log('Exporting sections...');
   const sections = await conn.query(
-    'SELECT id, chapter_id, section_number, title, content, source_url, file_type, word_count FROM sections ORDER BY id'
+    'SELECT id, chapter_id, section_number, title, content, source_url, file_type, word_count, effective_date, superseded_by FROM sections ORDER BY id'
   );
   const insertSection = db.prepare(
-    'INSERT INTO sections (id, chapter_id, section_number, title, content, source_url, file_type, word_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO sections (id, chapter_id, section_number, title, content, source_url, file_type, word_count, effective_date, superseded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
 
   const insertSections = db.transaction((rows) => {
     for (const row of rows) {
-      insertSection.run(row.id, row.chapter_id, row.section_number, row.title, row.content, row.source_url, row.file_type, row.word_count);
+      const effDate = row.effective_date ? row.effective_date.toISOString().split('T')[0] : null;
+      insertSection.run(row.id, row.chapter_id, row.section_number, row.title, row.content, row.source_url, row.file_type, row.word_count, effDate, row.superseded_by);
     }
   });
   insertSections(sections);
