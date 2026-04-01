@@ -14,6 +14,7 @@
     "better-sqlite3": "^11.0.0"
   },
   "devDependencies": {
+    "@flydotio/dockerfile": "^0.7.10",
     "mariadb": "^3.5.2"
   },
   "engines": {
