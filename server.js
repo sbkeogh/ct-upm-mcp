@@ -825,36 +825,125 @@ async function handleRequest(req, res) {
 
   // Landing page
   if (url.pathname === '/' && req.method === 'GET') {
+    const hc = stmts.hearingCount.get();
+    const sc = stmts.sectionCount.get();
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(`<!DOCTYPE html>
-<html><head><title>CT UPM MCP Server</title><style>
-body{font-family:system-ui;max-width:720px;margin:40px auto;padding:0 20px;line-height:1.6;color:#333}
-h1{color:#1a365d}code{background:#f0f0f0;padding:2px 6px;border-radius:3px;font-size:0.9em}
-pre{background:#f0f0f0;padding:16px;border-radius:8px;overflow-x:auto}
+<html><head><title>CT Medicaid Policy &amp; Hearing Decisions — MCP Server</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;max-width:780px;margin:40px auto;padding:0 20px;line-height:1.7;color:#333}
+h1{color:#1a365d;margin-bottom:4px}
+h2{color:#1a365d;margin-top:32px;border-bottom:2px solid #e2e8f0;padding-bottom:6px}
+h3{color:#2d3748;margin-top:24px}
+code{background:#f0f0f0;padding:2px 6px;border-radius:3px;font-size:0.9em}
+pre{background:#1a202c;color:#e2e8f0;padding:16px;border-radius:8px;overflow-x:auto;font-size:0.85em}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0}
+.stat{background:#f7fafc;padding:16px;border-radius:8px;text-align:center;border:1px solid #e2e8f0}
+.stat .number{font-size:1.8em;font-weight:700;color:#2563eb;display:block}
+.stat .label{font-size:0.85em;color:#718096}
 .tools{display:grid;gap:8px;margin:16px 0}
 .tool{background:#f8f9fa;padding:12px;border-radius:6px;border-left:3px solid #2563eb}
+.tool.hearing{border-left-color:#d69e2e}
+.setup-option{background:#f7fafc;padding:20px;border-radius:8px;margin:12px 0;border:1px solid #e2e8f0}
+.setup-option h3{margin-top:0}
+.examples{background:#fffbeb;padding:16px;border-radius:8px;border:1px solid #f6e05e;margin:16px 0}
+.examples li{margin:6px 0}
+a{color:#2563eb}
+.footer{margin-top:40px;padding-top:16px;border-top:1px solid #e2e8f0;color:#718096;font-size:0.85em}
 </style></head><body>
-<h1>Connecticut Uniform Policy Manual</h1>
-<p>MCP server providing full-text search and analysis of the <a href="https://portal.ct.gov/dss/lists/uniform-policy-manual">CT DSS Uniform Policy Manual</a> — 1,632 policy sections covering Medicaid eligibility, assets, income, transfer penalties, and more.</p>
 
-<h2>Connect with Claude</h2>
-<p>Add this server as a remote MCP integration in Claude Desktop or Claude Code:</p>
+<h1>Connecticut Medicaid Policy &amp; Fair Hearing Decisions</h1>
+<p style="color:#718096;margin-top:0">MCP Server for Claude AI — full-text search across CT DSS policy and administrative hearing decisions</p>
+
+<div class="stat-grid">
+  <div class="stat"><span class="number">${sc.count.toLocaleString()}</span><span class="label">UPM Policy Sections</span></div>
+  <div class="stat"><span class="number">${hc.count.toLocaleString()}</span><span class="label">Fair Hearing Decisions</span></div>
+  <div class="stat"><span class="number">10.8M+</span><span class="label">Words of Policy Text</span></div>
+  <div class="stat"><span class="number">2013&ndash;2024</span><span class="label">Decision Year Range</span></div>
+</div>
+
+<h2>What's in this database?</h2>
+<p><strong>Uniform Policy Manual (UPM)</strong> &mdash; The complete CT DSS policy manual governing Medicaid eligibility, asset treatment, income rules, transfer penalties, spousal protections, and other public assistance programs. All 10 chapters (UPM0&ndash;UPM9), plus 266 policy transmittals.</p>
+<p><strong>Fair Hearing Decisions</strong> &mdash; ${hc.count.toLocaleString()} administrative hearing decisions from the CT DSS Office of Legal Counsel (OLCRAH), covering:</p>
+<ul>
+  <li><strong>LTSS Eligibility</strong> &mdash; Long-term services &amp; supports (nursing home, home care, Medicaid eligibility)</li>
+  <li><strong>Medical Services</strong> &mdash; Coverage denials, service authorizations, medical necessity</li>
+  <li><strong>Other Medicaid Eligibility</strong> &mdash; Asset transfers, income calculations, eligibility determinations</li>
+  <li><strong>SNAP Eligibility</strong> &mdash; Food assistance program decisions</li>
+</ul>
+
+<h2>How to Connect</h2>
+
+<div class="setup-option">
+<h3>Claude.ai (Web Browser)</h3>
+<ol>
+  <li>Go to <a href="https://claude.ai">claude.ai</a> (requires Claude Pro, Team, or Enterprise)</li>
+  <li>Click your profile icon &rarr; <strong>Settings</strong> &rarr; <strong>Integrations</strong></li>
+  <li>Click <strong>Add custom integration</strong></li>
+  <li>Enter the URL: <code>https://ct-upm-mcp.fly.dev/mcp</code></li>
+  <li>Name it "CT Medicaid Policy" or similar</li>
+</ol>
+<p>That's it. Claude will automatically use the UPM and hearing search tools when you ask relevant questions.</p>
+</div>
+
+<div class="setup-option">
+<h3>Claude Desktop (Mac or Windows)</h3>
+<p>Edit your config file:</p>
+<ul>
+  <li><strong>Mac:</strong> <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
+  <li><strong>Windows:</strong> <code>%APPDATA%\\Claude\\claude_desktop_config.json</code></li>
+</ul>
+<p>Add this to the file (create it if it doesn't exist):</p>
 <pre>{
   "mcpServers": {
     "ct-upm": {
-      "url": "${req.headers.host ? `http://${req.headers.host}` : 'https://your-host.example.com'}/mcp"
+      "url": "https://ct-upm-mcp.fly.dev/mcp"
     }
   }
 }</pre>
-
-<h2>Available Tools</h2>
-<div class="tools">
-${TOOLS.map(t => `<div class="tool"><strong>${t.name}</strong> — ${t.description.split('.')[0]}</div>`).join('\n')}
+<p>Restart Claude Desktop after saving.</p>
 </div>
 
-<h2>Source</h2>
-<p>Data scraped from <a href="https://portal.ct.gov/dss/lists/uniform-policy-manual">portal.ct.gov/dss</a>. All content is public domain (CT state government).</p>
-<p><a href="/health">Health check</a></p>
+<div class="setup-option">
+<h3>Claude Code (CLI)</h3>
+<pre>claude mcp add --transport http ct-upm https://ct-upm-mcp.fly.dev/mcp</pre>
+</div>
+
+<div class="examples">
+<h3>Example Questions</h3>
+<ul>
+  <li>"What is the Medicaid transfer penalty lookback period in Connecticut?"</li>
+  <li>"How are annuities treated for Medicaid eligibility under the UPM?"</li>
+  <li>"Search hearing decisions about home exemptions for siblings"</li>
+  <li>"What are the current CSRA limits for a community spouse?"</li>
+  <li>"Find LTSS hearing decisions from 2023 about transfer penalties"</li>
+  <li>"What does UPM section 4030 say about exempt assets?"</li>
+</ul>
+</div>
+
+<h2>Available Tools</h2>
+<h3>UPM Policy Tools</h3>
+<div class="tools">
+${TOOLS.filter(t => t.name.startsWith('upm_')).map(t => `<div class="tool"><strong>${t.name}</strong> &mdash; ${t.description.split('.')[0]}</div>`).join('\n')}
+</div>
+
+<h3>Fair Hearing Decision Tools</h3>
+<div class="tools">
+${TOOLS.filter(t => t.name.startsWith('hearing_')).map(t => `<div class="tool hearing"><strong>${t.name}</strong> &mdash; ${t.description.split('.')[0]}</div>`).join('\n')}
+</div>
+
+<h2>Data Sources</h2>
+<ul>
+  <li><a href="https://portal.ct.gov/dss/lists/uniform-policy-manual">CT DSS Uniform Policy Manual</a> &mdash; all 1,632 sections + 266 transmittals</li>
+  <li><a href="https://portal.ct.gov/DSS/Lists/Administrative-Hearings-Decisions">CT DSS Administrative Hearing Decisions</a> &mdash; all ${hc.count.toLocaleString()} decisions (2013&ndash;2024)</li>
+</ul>
+<p>All content is public domain (Connecticut state government publications).</p>
+
+<div class="footer">
+  <p>Built by <a href="https://keogh.law">Stephen B. Keogh</a>, Keogh.Law &mdash; Elder Law, Norwalk, CT</p>
+  <p><a href="/health">Health check</a> &middot; <a href="https://github.com/sbkeogh/ct-upm-mcp">Source code</a></p>
+</div>
 </body></html>`);
     return;
   }
