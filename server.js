@@ -186,6 +186,85 @@ const stmts = {
     WHERE (content LIKE ? OR content LIKE ? OR title LIKE ?) AND year >= ?
     ORDER BY year DESC, sequence DESC LIMIT 10
   `),
+  // SMM (State Medicaid Manual) statements
+  searchSmmFts: db.prepare(`
+    SELECT s.id, s.section_number, s.section_range_end, s.title, s.chapter_id,
+           s.word_count, c.chapter_number, c.title as chapter_title, rank
+    FROM smm_fts fts
+    JOIN smm_sections s ON fts.rowid = s.id
+    JOIN smm_chapters c ON s.chapter_id = c.id
+    WHERE smm_fts MATCH ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchSmmFtsChapter: db.prepare(`
+    SELECT s.id, s.section_number, s.section_range_end, s.title, s.chapter_id,
+           s.word_count, c.chapter_number, c.title as chapter_title, rank
+    FROM smm_fts fts
+    JOIN smm_sections s ON fts.rowid = s.id
+    JOIN smm_chapters c ON s.chapter_id = c.id
+    WHERE smm_fts MATCH ? AND c.chapter_number = ?
+    ORDER BY rank LIMIT ?
+  `),
+  getSmmSection: db.prepare(`
+    SELECT s.*, c.chapter_number, c.title as chapter_title
+    FROM smm_sections s JOIN smm_chapters c ON s.chapter_id = c.id
+    WHERE s.section_number = ?
+  `),
+  getSmmSectionContent: db.prepare('SELECT content FROM smm_sections WHERE section_number = ?'),
+  listSmmChapters: db.prepare(`
+    SELECT c.chapter_number, c.title, COUNT(s.id) as section_count, SUM(s.word_count) as total_words
+    FROM smm_chapters c LEFT JOIN smm_sections s ON c.id = s.chapter_id
+    GROUP BY c.id ORDER BY c.chapter_number
+  `),
+  listSmmSections: db.prepare(`
+    SELECT s.section_number, s.section_range_end, s.title, s.word_count
+    FROM smm_sections s JOIN smm_chapters c ON s.chapter_id = c.id
+    WHERE c.chapter_number = ? ORDER BY s.section_number
+  `),
+  smmSectionCount: db.prepare('SELECT COUNT(*) as count FROM smm_sections'),
+  smmChapterCount: db.prepare('SELECT COUNT(*) as count FROM smm_chapters'),
+  // Court decision statements
+  searchCourtsFts: db.prepare(`
+    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page,
+           c.word_count, c.page_count, c.matched_keywords, rank
+    FROM courts_fts fts
+    JOIN court_decisions c ON fts.rowid = c.id
+    WHERE courts_fts MATCH ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchCourtsFtsCourt: db.prepare(`
+    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page,
+           c.word_count, c.page_count, c.matched_keywords, rank
+    FROM courts_fts fts
+    JOIN court_decisions c ON fts.rowid = c.id
+    WHERE courts_fts MATCH ? AND c.court = ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchCourtsFtsYear: db.prepare(`
+    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page,
+           c.word_count, c.page_count, c.matched_keywords, rank
+    FROM courts_fts fts
+    JOIN court_decisions c ON fts.rowid = c.id
+    WHERE courts_fts MATCH ? AND c.year = ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchCourtsFtsCourtYear: db.prepare(`
+    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page,
+           c.word_count, c.page_count, c.matched_keywords, rank
+    FROM courts_fts fts
+    JOIN court_decisions c ON fts.rowid = c.id
+    WHERE courts_fts MATCH ? AND c.court = ? AND c.year = ?
+    ORDER BY rank LIMIT ?
+  `),
+  getCourt: db.prepare('SELECT * FROM court_decisions WHERE pdf_filename = ?'),
+  getCourtById: db.prepare('SELECT * FROM court_decisions WHERE id = ?'),
+  getCourtContent: db.prepare('SELECT content FROM court_decisions WHERE pdf_filename = ?'),
+  courtCount: db.prepare('SELECT COUNT(*) as count FROM court_decisions'),
+  courtBreakdown: db.prepare(`
+    SELECT court, COUNT(*) as count, SUM(word_count) as total_words,
+           MIN(year) as min_year, MAX(year) as max_year
+    FROM court_decisions GROUP BY court ORDER BY court
+  `),
   // Hearing decision statements
   searchHearingsFts: db.prepare(`
     SELECT h.id, h.decision_number, h.category, h.year, h.case_number, h.title,
@@ -226,6 +305,140 @@ const stmts = {
     SELECT category, COUNT(*) as count, SUM(word_count) as total_words,
            MIN(year) as min_year, MAX(year) as max_year
     FROM hearing_decisions GROUP BY category ORDER BY category
+  `),
+  // CT statute statements (Titles 17b, 19a, 45a)
+  searchStatutesFts: db.prepare(`
+    SELECT s.id, s.title_num, s.chapter_name, s.chapter_title, s.section_number, s.section_title,
+           s.word_count, s.source_url, rank
+    FROM statutes_fts fts
+    JOIN ct_statutes s ON fts.rowid = s.id
+    WHERE statutes_fts MATCH ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchStatutesFtsTitle: db.prepare(`
+    SELECT s.id, s.title_num, s.chapter_name, s.chapter_title, s.section_number, s.section_title,
+           s.word_count, s.source_url, rank
+    FROM statutes_fts fts
+    JOIN ct_statutes s ON fts.rowid = s.id
+    WHERE statutes_fts MATCH ? AND s.title_num = ?
+    ORDER BY rank LIMIT ?
+  `),
+  getStatute: db.prepare('SELECT * FROM ct_statutes WHERE section_number = ?'),
+  getStatuteContent: db.prepare('SELECT content FROM ct_statutes WHERE section_number = ?'),
+  statuteCount: db.prepare('SELECT COUNT(*) as count FROM ct_statutes'),
+  statuteTitleBreakdown: db.prepare(`
+    SELECT title_num, COUNT(*) as count, SUM(word_count) as total_words
+    FROM ct_statutes GROUP BY title_num ORDER BY title_num
+  `),
+  // 42 CFR statements
+  searchCfrFts: db.prepare(`
+    SELECT c.id, c.part_num, c.part_title, c.subpart, c.subpart_title, c.section_number, c.section_title,
+           c.word_count, rank
+    FROM cfr_fts fts
+    JOIN cfr_sections c ON fts.rowid = c.id
+    WHERE cfr_fts MATCH ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchCfrFtsPart: db.prepare(`
+    SELECT c.id, c.part_num, c.part_title, c.subpart, c.subpart_title, c.section_number, c.section_title,
+           c.word_count, rank
+    FROM cfr_fts fts
+    JOIN cfr_sections c ON fts.rowid = c.id
+    WHERE cfr_fts MATCH ? AND c.part_num = ?
+    ORDER BY rank LIMIT ?
+  `),
+  getCfr: db.prepare('SELECT * FROM cfr_sections WHERE section_number = ?'),
+  getCfrContent: db.prepare('SELECT content FROM cfr_sections WHERE section_number = ?'),
+  cfrCount: db.prepare('SELECT COUNT(*) as count FROM cfr_sections'),
+  cfrPartBreakdown: db.prepare(`
+    SELECT part_num, part_title, COUNT(*) as count, SUM(word_count) as total_words
+    FROM cfr_sections GROUP BY part_num, part_title ORDER BY part_num
+  `),
+  // CT Regulations statements
+  searchRegsFts: db.prepare(`
+    SELECT r.id, r.title_num, r.subtitle, r.subtitle_text, r.section_number, r.section_title,
+           r.word_count, r.source_url, rank
+    FROM regulations_fts fts
+    JOIN ct_regulations r ON fts.rowid = r.id
+    WHERE regulations_fts MATCH ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchRegsFtsTitle: db.prepare(`
+    SELECT r.id, r.title_num, r.subtitle, r.subtitle_text, r.section_number, r.section_title,
+           r.word_count, r.source_url, rank
+    FROM regulations_fts fts
+    JOIN ct_regulations r ON fts.rowid = r.id
+    WHERE regulations_fts MATCH ? AND r.title_num = ?
+    ORDER BY rank LIMIT ?
+  `),
+  getReg: db.prepare('SELECT * FROM ct_regulations WHERE section_number = ?'),
+  getRegContent: db.prepare('SELECT content FROM ct_regulations WHERE section_number = ?'),
+  regCount: db.prepare('SELECT COUNT(*) as count FROM ct_regulations'),
+  regTitleBreakdown: db.prepare(`
+    SELECT title_num, COUNT(*) as count, SUM(word_count) as total_words
+    FROM ct_regulations GROUP BY title_num ORDER BY title_num
+  `),
+  // CMS Guidance statements
+  searchGuidanceFts: db.prepare(`
+    SELECT g.id, g.doc_type, g.filename, g.title, g.doc_date, g.year,
+           g.word_count, g.page_count, g.source_url, rank
+    FROM guidance_fts fts
+    JOIN cms_guidance g ON fts.rowid = g.id
+    WHERE guidance_fts MATCH ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchGuidanceFtsType: db.prepare(`
+    SELECT g.id, g.doc_type, g.filename, g.title, g.doc_date, g.year,
+           g.word_count, g.page_count, g.source_url, rank
+    FROM guidance_fts fts
+    JOIN cms_guidance g ON fts.rowid = g.id
+    WHERE guidance_fts MATCH ? AND g.doc_type = ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchGuidanceFtsYear: db.prepare(`
+    SELECT g.id, g.doc_type, g.filename, g.title, g.doc_date, g.year,
+           g.word_count, g.page_count, g.source_url, rank
+    FROM guidance_fts fts
+    JOIN cms_guidance g ON fts.rowid = g.id
+    WHERE guidance_fts MATCH ? AND g.year = ?
+    ORDER BY rank LIMIT ?
+  `),
+  getGuidance: db.prepare('SELECT * FROM cms_guidance WHERE filename = ?'),
+  getGuidanceContent: db.prepare('SELECT content FROM cms_guidance WHERE filename = ?'),
+  guidanceCount: db.prepare('SELECT COUNT(*) as count FROM cms_guidance'),
+  guidanceTypeBreakdown: db.prepare(`
+    SELECT doc_type, COUNT(*) as count, SUM(word_count) as total_words,
+           MIN(year) as min_year, MAX(year) as max_year
+    FROM cms_guidance GROUP BY doc_type ORDER BY doc_type
+  `),
+  // Federal Public Law statements (OBBBA, DRA 2005, etc.)
+  searchPublawsFts: db.prepare(`
+    SELECT p.id, p.act_id, p.act_short_title, p.title_num, p.title_name, p.subtitle,
+           p.section_number, p.section_heading, p.stat_page, p.source_url, p.word_count, rank
+    FROM publaws_fts fts
+    JOIN federal_public_laws p ON fts.rowid = p.id
+    WHERE publaws_fts MATCH ?
+    ORDER BY rank LIMIT ?
+  `),
+  searchPublawsFtsAct: db.prepare(`
+    SELECT p.id, p.act_id, p.act_short_title, p.title_num, p.title_name, p.subtitle,
+           p.section_number, p.section_heading, p.stat_page, p.source_url, p.word_count, rank
+    FROM publaws_fts fts
+    JOIN federal_public_laws p ON fts.rowid = p.id
+    WHERE publaws_fts MATCH ? AND p.act_id = ?
+    ORDER BY rank LIMIT ?
+  `),
+  getPublaw: db.prepare('SELECT * FROM federal_public_laws WHERE act_id = ? AND section_number = ?'),
+  getPublawAnyAct: db.prepare('SELECT * FROM federal_public_laws WHERE section_number = ?'),
+  getPublawContent: db.prepare('SELECT content FROM federal_public_laws WHERE id = ?'),
+  publawCount: db.prepare('SELECT COUNT(*) as count FROM federal_public_laws'),
+  publawActBreakdown: db.prepare(`
+    SELECT act_id, act_short_title, COUNT(*) as count, SUM(word_count) as total_words
+    FROM federal_public_laws GROUP BY act_id, act_short_title ORDER BY act_id
+  `),
+  publawTitleBreakdown: db.prepare(`
+    SELECT act_id, title_num, title_name, COUNT(*) as count, SUM(word_count) as total_words
+    FROM federal_public_laws GROUP BY act_id, title_num, title_name ORDER BY act_id, title_num
   `)
 };
 
@@ -354,6 +567,81 @@ const TOOLS = [
     }
   },
   {
+    name: 'smm_search',
+    description: 'Search the CMS State Medicaid Manual (Publication #45) — the FEDERAL reference manual governing how states implement Medicaid. Complements the CT UPM (state-level) by providing federal rules. 12 chapters, 62 sections covering eligibility, services, payments, program integrity.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query (e.g., "transfer of assets", "spousal impoverishment", "nursing facility services")' },
+        chapter: { type: 'integer', description: 'Filter by chapter number (1-15). Ch2=Eligibility, Ch3=Financial, Ch4=Services' },
+        limit: { type: 'integer', description: 'Max results (default 10, max 20)', default: 10 }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'smm_get_section',
+    description: 'Get the full text of a specific SMM section by section number. Use after searching.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        section_number: { type: 'string', description: 'The section number (e.g., "3258", "2320")' }
+      },
+      required: ['section_number']
+    }
+  },
+  {
+    name: 'smm_list_chapters',
+    description: 'List all CMS State Medicaid Manual chapters with section counts.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'smm_list_sections',
+    description: 'List all sections within a specific SMM chapter.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        chapter: { type: 'integer', description: 'Chapter number (1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 15)' }
+      },
+      required: ['chapter']
+    }
+  },
+  {
+    name: 'smm_stats',
+    description: 'Get statistics on the CMS State Medicaid Manual database.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'court_search',
+    description: 'Search CT Appellate and Supreme Court decisions related to Medicaid, conservatorship, elder law, and social services. 521 decisions (2003-2026) covering DSS disputes, nursing home cases, asset transfers, conservatorships, incapacity, and waiver programs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query (e.g., "transfer penalty lookback", "conservatorship Medicaid", "nursing home discharge")' },
+        court: { type: 'string', enum: ['appellate', 'supreme'], description: 'Filter by court (appellate or supreme)' },
+        year: { type: 'integer', description: 'Filter by year (2003-2026)' },
+        limit: { type: 'integer', description: 'Max results (default 10, max 20)', default: 10 }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'court_get',
+    description: 'Get the full text of a specific CT court decision by PDF filename. Use after searching.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pdf_filename: { type: 'string', description: 'The PDF filename (e.g., "AP229.72.pdf", "332CR71.pdf")' }
+      },
+      required: ['pdf_filename']
+    }
+  },
+  {
+    name: 'court_stats',
+    description: 'Get statistics on the CT court decisions database — total count, breakdown by court type.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
     name: 'hearing_search',
     description: 'Search CT DSS fair hearing decisions (administrative appeals). ~4,400 decisions covering LTSS eligibility, medical services, other Medicaid eligibility, and SNAP. Use to find how DSS has ruled on specific issues like transfer penalties, asset exemptions, income calculations, or service denials.',
     inputSchema: {
@@ -381,6 +669,153 @@ const TOOLS = [
   {
     name: 'hearing_stats',
     description: 'Get statistics on the fair hearing decisions database — total count, breakdown by category and year.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'statute_search',
+    description: 'Search Connecticut General Statutes (full text). Covers Title 17b (Social Services / Medicaid / public assistance, 638 sections), Title 19a (Public Health / nursing homes / hospitals / home care, 1,074 sections), and Title 45a (Probate Courts / decedents estates / conservatorship / trusts, 837 sections). Source: cga.ct.gov.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query (e.g., "Medicaid asset transfer penalty", "conservator authority gift", "nursing home discharge")' },
+        title: { type: 'string', enum: ['17b', '19a', '45a'], description: 'Filter by CT statute Title' },
+        limit: { type: 'integer', description: 'Max results (default 10, max 20)', default: 10 }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'statute_get',
+    description: 'Get the full text of a CT General Statute section by section number (e.g., "17b-261", "45a-644", "19a-535").',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        section_number: { type: 'string', description: 'The section number (e.g., "17b-261")' }
+      },
+      required: ['section_number']
+    }
+  },
+  {
+    name: 'statute_stats',
+    description: 'Get statistics on the CT General Statutes database — total sections, breakdown by Title.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'cfr_search',
+    description: 'Search 42 CFR (federal Medicaid regulations). Full text of relevant 42 CFR parts governing state Medicaid programs, eligibility, coverage, payment, fair hearings, and managed care.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query (e.g., "spousal impoverishment community spouse", "estate recovery", "fair hearing procedures")' },
+        part: { type: 'integer', description: 'Filter by 42 CFR Part number (e.g., 435, 440, 447)' },
+        limit: { type: 'integer', description: 'Max results (default 10, max 20)', default: 10 }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'cfr_get',
+    description: 'Get the full text of a 42 CFR section by section number (e.g., "435.726", "447.10").',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        section_number: { type: 'string', description: 'The section number (e.g., "435.726")' }
+      },
+      required: ['section_number']
+    }
+  },
+  {
+    name: 'cfr_stats',
+    description: 'Get statistics on the 42 CFR database — total sections, breakdown by Part.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'regulation_search',
+    description: 'Search Regulations of Connecticut State Agencies (RCSA) — administrative regulations promulgated by DSS, DPH, and other CT agencies.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query (e.g., "asset eligibility limits", "spousal allowance calculation")' },
+        title: { type: 'string', description: 'Filter by RCSA Title number' },
+        limit: { type: 'integer', description: 'Max results (default 10, max 20)', default: 10 }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'regulation_get',
+    description: 'Get the full text of a CT regulation by section number.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        section_number: { type: 'string', description: 'The RCSA section number' }
+      },
+      required: ['section_number']
+    }
+  },
+  {
+    name: 'regulation_stats',
+    description: 'Get statistics on the CT Regulations database — total sections, breakdown by Title.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'guidance_search',
+    description: 'Search CMS sub-regulatory guidance documents — State Medicaid Director letters, State Health Official letters, Informational Bulletins, and similar policy guidance.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query (e.g., "MAGI methodology", "renewal redetermination", "premium assistance")' },
+        doc_type: { type: 'string', description: 'Filter by document type (e.g., "SMD", "SHO", "CIB")' },
+        year: { type: 'integer', description: 'Filter by year' },
+        limit: { type: 'integer', description: 'Max results (default 10, max 20)', default: 10 }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'guidance_get',
+    description: 'Get the full text of a CMS guidance document by filename.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string', description: 'The document filename' }
+      },
+      required: ['filename']
+    }
+  },
+  {
+    name: 'guidance_stats',
+    description: 'Get statistics on the CMS guidance database — total documents, breakdown by document type and year.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'publaw_search',
+    description: 'Search the full text of federal Public Laws by keyword. Currently holds the One Big Beautiful Bill Act (PL 119-21, signed July 4, 2025, 309 sections) and the Deficit Reduction Act of 2005 (PL 109-171, signed Feb 8, 2006, 165 sections — the source of the 5-year Medicaid look-back, annuity, and home-equity rules). Returns the act, title, section number, heading, and a snippet. Especially relevant for elder law / trusts & estates: Medicaid, Medicare, Social Security Act amendments, ABLE accounts, 529 plans, retirement accounts, and disability provisions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query (e.g., "Medicaid asset transfer look-back", "annuity disclosure", "ABLE account contribution limit", "home equity long-term care")' },
+        act: { type: 'string', enum: ['PL 119-21', 'PL 109-171'], description: 'Filter by act: "PL 119-21" (One Big Beautiful Bill Act) or "PL 109-171" (Deficit Reduction Act of 2005)' },
+        limit: { type: 'integer', description: 'Max results (default 10, max 20)', default: 10 }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'publaw_get',
+    description: 'Get the full text of a federal Public Law section by section number (e.g., "6012" for DRA 2005 annuity rules, "70115" for the OBBBA ABLE account limit). Optionally specify the act to disambiguate.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        section_number: { type: 'string', description: 'The section number (e.g., "6014", "70413")' },
+        act: { type: 'string', enum: ['PL 119-21', 'PL 109-171'], description: 'The act (optional; required only if the same section number exists in both acts)' }
+      },
+      required: ['section_number']
+    }
+  },
+  {
+    name: 'publaw_stats',
+    description: 'Get statistics on the federal Public Laws database — acts held, total sections, and breakdown by title within each act.',
     inputSchema: { type: 'object', properties: {} }
   }
 ];
@@ -655,6 +1090,160 @@ function handleToolCall(name, args) {
       return result;
     }
 
+    case 'smm_search': {
+      const { query, chapter, limit = 10 } = args;
+      const resultLimit = Math.min(limit, MAX_RESULTS);
+      const ftsQuery = sanitizeFtsQuery(query);
+      if (!ftsQuery) return { error: 'Query too short' };
+
+      let results;
+      if (chapter) {
+        results = stmts.searchSmmFtsChapter.all(ftsQuery, chapter, resultLimit);
+      } else {
+        results = stmts.searchSmmFts.all(ftsQuery, resultLimit);
+      }
+
+      const searchTerms = query.split(/\s+/).filter(t => t.length > 2);
+      const enriched = results.map(row => {
+        const content = stmts.getSmmSectionContent.get(row.section_number);
+        return {
+          section_number: row.section_number,
+          section_range_end: row.section_range_end,
+          title: row.title,
+          chapter: row.chapter_number,
+          chapter_title: row.chapter_title,
+          word_count: row.word_count,
+          snippet: extractSnippet(content?.content, searchTerms)
+        };
+      });
+
+      return { query, results_count: enriched.length, results: enriched };
+    }
+
+    case 'smm_get_section': {
+      const result = stmts.getSmmSection.get(args.section_number);
+      if (!result) return { error: `Section ${args.section_number} not found` };
+      return {
+        section_number: result.section_number,
+        section_range_end: result.section_range_end,
+        title: result.title,
+        chapter: result.chapter_number,
+        chapter_title: result.chapter_title,
+        word_count: result.word_count,
+        content: truncate(result.content, MAX_CONTENT_LENGTH)
+      };
+    }
+
+    case 'smm_list_chapters': {
+      const chapters = stmts.listSmmChapters.all();
+      return {
+        chapters: chapters.map(c => ({
+          chapter: c.chapter_number,
+          title: c.title,
+          sections: c.section_count,
+          words: c.total_words
+        }))
+      };
+    }
+
+    case 'smm_list_sections': {
+      const sections = stmts.listSmmSections.all(args.chapter);
+      return {
+        chapter: args.chapter,
+        sections: sections.map(s => ({
+          section_number: s.section_number,
+          range_end: s.section_range_end,
+          title: s.title,
+          word_count: s.word_count
+        }))
+      };
+    }
+
+    case 'smm_stats': {
+      const sc = stmts.smmSectionCount.get();
+      const cc = stmts.smmChapterCount.get();
+      const chapters = stmts.listSmmChapters.all();
+      return {
+        total_chapters: cc.count,
+        total_sections: sc.count,
+        chapters: chapters.map(c => ({
+          chapter: c.chapter_number,
+          title: c.title,
+          sections: c.section_count,
+          words: c.total_words
+        }))
+      };
+    }
+
+    case 'court_search': {
+      const { query, court, year, limit = 10 } = args;
+      const resultLimit = Math.min(limit, MAX_RESULTS);
+      const ftsQuery = sanitizeFtsQuery(query);
+      if (!ftsQuery) return { error: 'Query too short' };
+
+      let results;
+      if (court && year) {
+        results = stmts.searchCourtsFtsCourtYear.all(ftsQuery, court, year, resultLimit);
+      } else if (court) {
+        results = stmts.searchCourtsFtsCourt.all(ftsQuery, court, resultLimit);
+      } else if (year) {
+        results = stmts.searchCourtsFtsYear.all(ftsQuery, year, resultLimit);
+      } else {
+        results = stmts.searchCourtsFts.all(ftsQuery, resultLimit);
+      }
+
+      const searchTerms = query.split(/\s+/).filter(t => t.length > 2);
+      const enriched = results.map(row => {
+        const content = stmts.getCourtContent.get(row.pdf_filename);
+        return {
+          case_name: row.case_name,
+          court: row.court,
+          year: row.year,
+          volume: row.volume,
+          page: row.page,
+          pdf_filename: row.pdf_filename,
+          word_count: row.word_count,
+          page_count: row.page_count,
+          matched_keywords: row.matched_keywords,
+          snippet: extractSnippet(content?.content, searchTerms)
+        };
+      });
+
+      return { query, results_count: enriched.length, results: enriched };
+    }
+
+    case 'court_get': {
+      const result = stmts.getCourt.get(args.pdf_filename);
+      if (!result) return { error: `Decision ${args.pdf_filename} not found` };
+      return {
+        case_name: result.case_name,
+        court: result.court,
+        year: result.year,
+        volume: result.volume,
+        page: result.page,
+        pdf_filename: result.pdf_filename,
+        word_count: result.word_count,
+        page_count: result.page_count,
+        matched_keywords: result.matched_keywords,
+        content: truncate(result.content, MAX_CONTENT_LENGTH),
+        source_url: result.source_url
+      };
+    }
+
+    case 'court_stats': {
+      const cc = stmts.courtCount.get();
+      const courts = stmts.courtBreakdown.all();
+      return {
+        total_decisions: cc.count,
+        courts: courts.map(r => ({
+          court: r.court,
+          decisions: r.count,
+          words: r.total_words,
+          year_range: `${r.min_year}-${r.max_year}`
+        }))
+      };
+    }
+
     case 'hearing_search': {
       const { query, category, year, limit = 10 } = args;
       const resultLimit = Math.min(limit, MAX_RESULTS);
@@ -720,6 +1309,310 @@ function handleToolCall(name, args) {
       };
     }
 
+    case 'statute_search': {
+      const { query, title, limit = 10 } = args;
+      const resultLimit = Math.min(limit, MAX_RESULTS);
+      const ftsQuery = sanitizeFtsQuery(query);
+      if (!ftsQuery) return { error: 'Query too short' };
+
+      const results = title
+        ? stmts.searchStatutesFtsTitle.all(ftsQuery, title, resultLimit)
+        : stmts.searchStatutesFts.all(ftsQuery, resultLimit);
+
+      const searchTerms = query.split(/\s+/).filter(t => t.length > 2);
+      const enriched = results.map(row => {
+        const content = stmts.getStatuteContent.get(row.section_number);
+        return {
+          section_number: row.section_number,
+          section_title: row.section_title,
+          title_num: row.title_num,
+          chapter_name: row.chapter_name,
+          chapter_title: row.chapter_title,
+          word_count: row.word_count,
+          source_url: row.source_url,
+          snippet: extractSnippet(content?.content, searchTerms)
+        };
+      });
+      return { query, results_count: enriched.length, results: enriched };
+    }
+
+    case 'statute_get': {
+      const result = stmts.getStatute.get(args.section_number);
+      if (!result) return { error: `Statute ${args.section_number} not found` };
+      return {
+        section_number: result.section_number,
+        section_title: result.section_title,
+        title_num: result.title_num,
+        chapter_name: result.chapter_name,
+        chapter_title: result.chapter_title,
+        word_count: result.word_count,
+        content: truncate(result.content, MAX_CONTENT_LENGTH),
+        source_citations: result.source_citations,
+        source_url: result.source_url
+      };
+    }
+
+    case 'statute_stats': {
+      const sc = stmts.statuteCount.get();
+      const titles = stmts.statuteTitleBreakdown.all();
+      return {
+        total_sections: sc.count,
+        titles: titles.map(r => ({
+          title: r.title_num,
+          sections: r.count,
+          words: r.total_words
+        }))
+      };
+    }
+
+    case 'cfr_search': {
+      const { query, part, limit = 10 } = args;
+      const resultLimit = Math.min(limit, MAX_RESULTS);
+      const ftsQuery = sanitizeFtsQuery(query);
+      if (!ftsQuery) return { error: 'Query too short' };
+
+      const results = (typeof part === 'number')
+        ? stmts.searchCfrFtsPart.all(ftsQuery, part, resultLimit)
+        : stmts.searchCfrFts.all(ftsQuery, resultLimit);
+
+      const searchTerms = query.split(/\s+/).filter(t => t.length > 2);
+      const enriched = results.map(row => {
+        const content = stmts.getCfrContent.get(row.section_number);
+        return {
+          section_number: row.section_number,
+          section_title: row.section_title,
+          part_num: row.part_num,
+          part_title: row.part_title,
+          subpart: row.subpart,
+          subpart_title: row.subpart_title,
+          word_count: row.word_count,
+          snippet: extractSnippet(content?.content, searchTerms)
+        };
+      });
+      return { query, results_count: enriched.length, results: enriched };
+    }
+
+    case 'cfr_get': {
+      // CFR section numbers are stored as "§ 435.726"; accept both forms.
+      const raw = args.section_number || '';
+      const stripped = raw.replace(/^\s*§\s*/, '').trim();
+      let result = stmts.getCfr.get(raw);
+      if (!result) result = stmts.getCfr.get(`§ ${stripped}`);
+      if (!result) result = stmts.getCfr.get(stripped);
+      if (!result) return { error: `CFR section ${args.section_number} not found` };
+      return {
+        section_number: result.section_number,
+        section_title: result.section_title,
+        part_num: result.part_num,
+        part_title: result.part_title,
+        subpart: result.subpart,
+        subpart_title: result.subpart_title,
+        word_count: result.word_count,
+        content: truncate(result.content, MAX_CONTENT_LENGTH)
+      };
+    }
+
+    case 'cfr_stats': {
+      const cc = stmts.cfrCount.get();
+      const parts = stmts.cfrPartBreakdown.all();
+      return {
+        total_sections: cc.count,
+        parts: parts.map(r => ({
+          part: r.part_num,
+          part_title: r.part_title,
+          sections: r.count,
+          words: r.total_words
+        }))
+      };
+    }
+
+    case 'regulation_search': {
+      const { query, title, limit = 10 } = args;
+      const resultLimit = Math.min(limit, MAX_RESULTS);
+      const ftsQuery = sanitizeFtsQuery(query);
+      if (!ftsQuery) return { error: 'Query too short' };
+
+      const results = title
+        ? stmts.searchRegsFtsTitle.all(ftsQuery, title, resultLimit)
+        : stmts.searchRegsFts.all(ftsQuery, resultLimit);
+
+      const searchTerms = query.split(/\s+/).filter(t => t.length > 2);
+      const enriched = results.map(row => {
+        const content = stmts.getRegContent.get(row.section_number);
+        return {
+          section_number: row.section_number,
+          section_title: row.section_title,
+          title_num: row.title_num,
+          subtitle: row.subtitle,
+          subtitle_text: row.subtitle_text,
+          word_count: row.word_count,
+          source_url: row.source_url,
+          snippet: extractSnippet(content?.content, searchTerms)
+        };
+      });
+      return { query, results_count: enriched.length, results: enriched };
+    }
+
+    case 'regulation_get': {
+      const result = stmts.getReg.get(args.section_number);
+      if (!result) return { error: `Regulation ${args.section_number} not found` };
+      return {
+        section_number: result.section_number,
+        section_title: result.section_title,
+        title_num: result.title_num,
+        subtitle: result.subtitle,
+        subtitle_text: result.subtitle_text,
+        word_count: result.word_count,
+        content: truncate(result.content, MAX_CONTENT_LENGTH),
+        source_url: result.source_url
+      };
+    }
+
+    case 'regulation_stats': {
+      const rc = stmts.regCount.get();
+      const titles = stmts.regTitleBreakdown.all();
+      return {
+        total_sections: rc.count,
+        titles: titles.map(r => ({
+          title: r.title_num,
+          sections: r.count,
+          words: r.total_words
+        }))
+      };
+    }
+
+    case 'guidance_search': {
+      const { query, doc_type, year, limit = 10 } = args;
+      const resultLimit = Math.min(limit, MAX_RESULTS);
+      const ftsQuery = sanitizeFtsQuery(query);
+      if (!ftsQuery) return { error: 'Query too short' };
+
+      let results;
+      if (doc_type) {
+        results = stmts.searchGuidanceFtsType.all(ftsQuery, doc_type, resultLimit);
+      } else if (year) {
+        results = stmts.searchGuidanceFtsYear.all(ftsQuery, year, resultLimit);
+      } else {
+        results = stmts.searchGuidanceFts.all(ftsQuery, resultLimit);
+      }
+
+      const searchTerms = query.split(/\s+/).filter(t => t.length > 2);
+      const enriched = results.map(row => {
+        const content = stmts.getGuidanceContent.get(row.filename);
+        return {
+          filename: row.filename,
+          title: row.title,
+          doc_type: row.doc_type,
+          doc_date: row.doc_date,
+          year: row.year,
+          word_count: row.word_count,
+          page_count: row.page_count,
+          source_url: row.source_url,
+          snippet: extractSnippet(content?.content, searchTerms)
+        };
+      });
+      return { query, results_count: enriched.length, results: enriched };
+    }
+
+    case 'guidance_get': {
+      const result = stmts.getGuidance.get(args.filename);
+      if (!result) return { error: `Guidance document ${args.filename} not found` };
+      return {
+        filename: result.filename,
+        title: result.title,
+        doc_type: result.doc_type,
+        doc_date: result.doc_date,
+        year: result.year,
+        word_count: result.word_count,
+        page_count: result.page_count,
+        content: truncate(result.content, MAX_CONTENT_LENGTH),
+        source_url: result.source_url
+      };
+    }
+
+    case 'guidance_stats': {
+      const gc = stmts.guidanceCount.get();
+      const types = stmts.guidanceTypeBreakdown.all();
+      return {
+        total_documents: gc.count,
+        types: types.map(r => ({
+          doc_type: r.doc_type,
+          documents: r.count,
+          words: r.total_words,
+          year_range: `${r.min_year}-${r.max_year}`
+        }))
+      };
+    }
+
+    case 'publaw_search': {
+      const { query, act, limit = 10 } = args;
+      const resultLimit = Math.min(limit, MAX_RESULTS);
+      const ftsQuery = sanitizeFtsQuery(query);
+      if (!ftsQuery) return { error: 'Query too short' };
+
+      const results = act
+        ? stmts.searchPublawsFtsAct.all(ftsQuery, act, resultLimit)
+        : stmts.searchPublawsFts.all(ftsQuery, resultLimit);
+
+      const searchTerms = query.split(/\s+/).filter(t => t.length > 2);
+      const enriched = results.map(row => {
+        const content = stmts.getPublawContent.get(row.id);
+        return {
+          act_id: row.act_id,
+          act_short_title: row.act_short_title,
+          section_number: row.section_number,
+          section_heading: row.section_heading,
+          title_num: row.title_num,
+          title_name: row.title_name,
+          subtitle: row.subtitle,
+          stat_page: row.stat_page,
+          word_count: row.word_count,
+          source_url: row.source_url,
+          snippet: extractSnippet(content?.content, searchTerms)
+        };
+      });
+      return { query, results_count: enriched.length, results: enriched };
+    }
+
+    case 'publaw_get': {
+      const { section_number, act } = args;
+      const result = act
+        ? stmts.getPublaw.get(act, section_number)
+        : stmts.getPublawAnyAct.get(section_number);
+      if (!result) return { error: `Public Law section ${section_number}${act ? ' in ' + act : ''} not found` };
+      return {
+        act_id: result.act_id,
+        act_short_title: result.act_short_title,
+        section_number: result.section_number,
+        section_heading: result.section_heading,
+        title_num: result.title_num,
+        title_name: result.title_name,
+        subtitle: result.subtitle,
+        stat_page: result.stat_page,
+        word_count: result.word_count,
+        content: truncate(result.content, MAX_CONTENT_LENGTH),
+        source_url: result.source_url
+      };
+    }
+
+    case 'publaw_stats': {
+      const pc = stmts.publawCount.get();
+      const acts = stmts.publawActBreakdown.all();
+      const titles = stmts.publawTitleBreakdown.all();
+      return {
+        total_sections: pc.count,
+        acts: acts.map(a => ({
+          act_id: a.act_id,
+          short_title: a.act_short_title,
+          sections: a.count,
+          words: a.total_words,
+          titles: titles
+            .filter(t => t.act_id === a.act_id)
+            .map(t => ({ title: t.title_num, name: t.title_name, sections: t.count, words: t.total_words }))
+        }))
+      };
+    }
+
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -730,7 +1623,7 @@ function handleToolCall(name, args) {
  */
 function createMcpServer() {
   const server = new Server(
-    { name: 'ct-upm', version: '2.1.0' },
+    { name: 'ct-upm', version: '2.3.0' },
     { capabilities: { tools: {} } }
   );
 
@@ -786,7 +1679,7 @@ async function handleRequest(req, res) {
   if (url.pathname === '/health' && req.method === 'GET') {
     const sc = stmts.sectionCount.get();
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', sections: sc.count, version: '2.1.0' }));
+    res.end(JSON.stringify({ status: 'ok', sections: sc.count, version: '2.3.0' }));
     return;
   }
 
