@@ -613,7 +613,7 @@ const TOOLS = [
   },
   {
     name: 'court_search',
-    description: 'Search CT Appellate and Supreme Court decisions related to Medicaid, conservatorship, elder law, and social services. 521 decisions (2003-2026) covering DSS disputes, nursing home cases, asset transfers, conservatorships, incapacity, and waiver programs.',
+    description: 'Search CT Appellate and Supreme Court decisions related to Medicaid, conservatorship, elder law, and social services. 530+ decisions (2003-present, refreshed weekly) covering DSS disputes, nursing home cases, asset transfers, conservatorships, incapacity, and waiver programs.',
     inputSchema: {
       type: 'object',
       properties: {
