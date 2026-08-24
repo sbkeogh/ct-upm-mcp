@@ -2,5 +2,8 @@ node_modules/
 .env
 *.log
 data/ct-upm.db
+data/ct-upm.db.gz
+data/ct-upm.db.gz.tmp
+data/ct-upm.db.new
 # Federal public-law ingest: raw govinfo downloads + parsed JSON (regenerable)
 publaw-ingest/raw/

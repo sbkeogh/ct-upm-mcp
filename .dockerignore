@@ -1,4 +1,23 @@
 node_modules
-export-to-sqlite.js
 .git
 *.md
+
+# The export script, not the server. The old entry named the pre-CJS filename and
+# had silently stopped matching.
+export-to-sqlite.cjs
+export-to-sqlite.js
+export-and-deploy.sh
+publaw-ingest
+
+# Colleague-facing setup docs — never part of the running image.
+COLLEAGUE_INSTRUCTIONS.html
+COLLEAGUE_INSTRUCTIONS.pdf
+
+# Only the COMPRESSED snapshot is uploaded (see Dockerfile). Excluding the plain
+# .db is what makes the build context 68 MB instead of 262 MB — without this line
+# BOTH copies would ship. Temp files from an aborted export are excluded for the
+# same reason: `.db.new` is a full-size second copy.
+data/*.db
+data/*.db.new
+data/*-shm
+data/*-wal
