@@ -1060,33 +1060,46 @@ function handleToolCall(name, args) {
 
     case 'upm_get_limits': {
       const { category = 'all' } = args;
+      // Figures re-verified 2026-07-22 against CT Public Acts + firm-verified
+      // current values. Anything not re-verified on that date is stated as a
+      // verify-live pointer rather than a number — a stale figure quoted as
+      // current is worse than no figure.
       const limits = {
         assets: {
-          individual_limit: 1600, couple_limit: 3200, home_equity_limit: 1071000,
+          individual_limit: 1600,
+          individual_limit_note: 'MAABD/LTSS countable-asset limit (longstanding CT figure)',
+          couple_limit_note: 'Not re-verified 2026-07-22 — confirm current couple figure in UPM 4005 / live DSS sources before quoting',
+          home_equity_limit: 1130000,
+          home_equity_note: 'Eff. 1/1/2026; adjusted annually. Federal OBBBA (PL 119-21) sec. 71108 enacted a $1M LTC home-equity cap — reconcile effective dates before advising',
           vehicle_exemption: 'One vehicle exempt regardless of value',
-          burial_fund_limit: 1500, life_insurance_face_value_limit: 1500,
-          note: 'Asset limits as of 2024. Home equity limit adjusted annually.'
+          burial_contract_limit: 10000,
+          burial_contract_note: 'Irrevocable funeral contract, per PA 19-57',
+          life_insurance_face_value_limit: 1500
         },
         income: {
           nursing_home_income_limit: 'No income limit for nursing home (income applied to cost of care)',
-          community_medicaid_individual: 1732, community_medicaid_couple: 2351,
-          personal_needs_allowance: 60,
-          note: 'Income figures as of 2024. Subject to annual adjustments.'
+          personal_needs_allowance: 75,
+          personal_needs_allowance_note: 'SNF PNA $75 per PA 21-3 (NOT the pre-2021 $60)',
+          community_medicaid_note: 'HUSKY C community income limits change annually — not re-verified 2026-07-22; check portal.ct.gov/dss or sharinglaw.net'
         },
         penalty: {
-          lookback_period_months: 60, penalty_divisor: 13584,
-          penalty_divisor_note: 'Average monthly cost of nursing home care in CT (2024)',
-          note: 'Penalty divisor updated annually by DSS.'
+          lookback_period_months: 60,
+          penalty_divisor: 15526,
+          penalty_divisor_note: 'Average monthly cost of care in CT, eff. 7/1/2025; DSS updates annually each July — verify after 7/1/2026',
         },
         spousal: {
-          csra_minimum: 29724, csra_maximum: 148620,
-          mmmna_base: 2555, mmmna_maximum: 3853.50, excess_shelter_standard: 766.50,
-          note: 'CSRA and MMMNA. 2024 values.'
+          csra_minimum: 50000,
+          csra_minimum_note: 'CONNECTICUT statutory minimum per PA 22-118 (eff. 7/1/2022) — deliberately higher than the federal floor; do not quote the federal minimum for CT',
+          csra_maximum: 162660,
+          csra_maximum_note: 'Eff. 1/1/2026 (federal maximum, adjusted annually each January)',
+          mmmna_maximum: 4066.50,
+          mmmna_maximum_note: 'Maximum MMMNA without a fair hearing, eff. 1/1/2026',
+          mmmna_base_note: 'Base MMMNA and excess-shelter standard adjust each July 1 — not re-verified 2026-07-22; check current figures before use'
         }
       };
       const result = category === 'all' ? limits : { [category]: limits[category] || { error: 'Unknown category' } };
-      result.source = 'Values from UPM sections 4000-4999 (assets), 5000-5999 (income). Verify in applicable sections.';
-      result.last_updated = '2024';
+      result.source = 'Convenience reference only — ALWAYS verify against the UPM sections, current CT Public Acts, and live DSS sources (portal.ct.gov/dss, sharinglaw.net) before quoting in a client matter.';
+      result.last_updated = '2026-07-22';
       return result;
     }
 
