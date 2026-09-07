@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CT Elder Law Research Database — Setup Instructions</title>
+<style>
+  @page {
+    size: letter;
+    margin: 0.6in 0.8in 0.7in 0.8in;
+    @bottom-center {
+      content: counter(page) " of " counter(pages);
+      font-family: 'Georgia', serif;
+      font-size: 8.5pt;
+      color: #888;
+    }
+  }
+
+  html {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body {
+    font-family: 'Charter', 'Georgia', 'Cambria', serif;
+    font-size: 10pt;
+    line-height: 1.4;
+    color: #1a1a1a;
+    margin: 0;
+  }
+
+  /* Title block */
+  .title-block {
+    border-bottom: 2px solid #2c3e50;
+    padding-bottom: 9pt;
+    margin-bottom: 14pt;
+  }
+  .eyebrow {
+    font-family: 'Helvetica Neue', 'Helvetica', sans-serif;
+    font-size: 8pt;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #7a8a99;
+    margin: 0 0 4pt 0;
+  }
+  h1 {
+    font-family: 'Georgia', 'Charter', serif;
+    font-size: 19pt;
+    font-weight: 600;
+    line-height: 1.15;
+    color: #1c2a3a;
+    margin: 0 0 3pt 0;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    font-family: 'Helvetica Neue', 'Helvetica', sans-serif;
+    font-size: 10pt;
+    color: #4a5566;
+    margin: 0;
+    font-style: italic;
+  }
+
+  /* Lead paragraph */
+  .lead {
+    font-size: 10.5pt;
+    color: #2c3540;
+    margin: 0 0 12pt 0;
+  }
+
+  /* Section headings */
+  h2 {
+    font-family: 'Helvetica Neue', 'Helvetica', sans-serif;
+    font-size: 11.5pt;
+    font-weight: 700;
+    color: #1c2a3a;
+    margin: 14pt 0 5pt 0;
+    padding-bottom: 3pt;
+    border-bottom: 1px solid #d6dde4;
+    letter-spacing: 0.01em;
+    page-break-after: avoid;
+  }
+
+  h3 {
+    font-family: 'Helvetica Neue', 'Helvetica', sans-serif;
+    font-size: 10pt;
+    font-weight: 700;
+    color: #34495e;
+    margin: 9pt 0 3pt 0;
+    text-transform: none;
+    page-break-after: avoid;
+  }
+
+  p {
+    margin: 0 0 6pt 0;
+    text-align: left;
+    hyphens: auto;
+  }
+
+  ol, ul {
+    margin: 3pt 0 8pt 0;
+    padding-left: 20pt;
+  }
+  li {
+    margin-bottom: 3pt;
+  }
+  li > ul, li > ol {
+    margin-top: 4pt;
+    margin-bottom: 4pt;
+  }
+
+  strong {
+    color: #1c2a3a;
+    font-weight: 700;
+  }
+
+  /* URL / code styling */
+  code, .url {
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 9.5pt;
+    background: #f4f6f8;
+    border: 1px solid #e0e5ea;
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: #1c2a3a;
+  }
+  .url-block {
+    display: block;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 10.5pt;
+    background: #f4f6f8;
+    border-left: 3px solid #2c5282;
+    padding: 6pt 10pt;
+    margin: 6pt 0 8pt 0;
+    color: #1c2a3a;
+    word-break: break-all;
+  }
+
+  /* Callout box */
+  .callout {
+    background: #fbf9f3;
+    border-left: 3px solid #b08540;
+    padding: 7pt 12pt;
+    margin: 10pt 0 10pt 0;
+    font-size: 10pt;
+    color: #3a3326;
+  }
+  .callout strong { color: #6e4e1a; }
+
+  /* Two-column section for "What's in the database" */
+  .corpus h3 { margin-top: 9pt; }
+  .corpus ul { margin-bottom: 7pt; }
+
+  /* Sample prompts — italic */
+  .prompts ul {
+    list-style: none;
+    padding-left: 0;
+  }
+  .prompts li {
+    font-style: italic;
+    color: #2c3540;
+    padding-left: 14pt;
+    text-indent: -14pt;
+    margin-bottom: 4pt;
+  }
+  .prompts li::before {
+    content: "\201C";
+    color: #b08540;
+    font-size: 14pt;
+    font-style: normal;
+    margin-right: 4pt;
+    vertical-align: -2pt;
+  }
+  .prompts li::after {
+    content: "\201D";
+    color: #b08540;
+    font-size: 14pt;
+    font-style: normal;
+    margin-left: 2pt;
+    vertical-align: -2pt;
+  }
+
+  /* Footer signature */
+  .signature {
+    margin-top: 16pt;
+    padding-top: 8pt;
+    border-top: 1px solid #d6dde4;
+    font-size: 9pt;
+    color: #5a6470;
+    font-family: 'Helvetica Neue', 'Helvetica', sans-serif;
+  }
+
+  /* Avoid breaks inside list items */
+  li, h2 + p, h3 + p { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<div class="title-block">
+  <p class="eyebrow">Custom Connector Setup</p>
+  <h1>CT Elder Law Research Database</h1>
+  <p class="subtitle">A guided walkthrough for connecting Claude to a Connecticut elder law research corpus</p>
+</div>
+
+<p class="lead">This document describes a custom <strong>MCP (Model Context Protocol)</strong> connector that gives Claude direct read access to a Connecticut elder-law research database. Once connected, Claude can search statutes, regulations, policy manuals, court decisions, and administrative rulings, retrieve full text, and reason over what it finds.</p>
+
+<h2>What you need</h2>
+<ul>
+  <li>A paid Claude account: <strong>Pro, Max, Team, or Enterprise</strong>. Custom connectors are not available on the Free tier.</li>
+  <li>Access via <strong>claude.ai</strong> in a browser. Custom connectors are configured there; once added, they also appear in the Claude desktop app on the same account.</li>
+</ul>
+
+<h2>One-time setup</h2>
+<ol>
+  <li>Go to <code>https://claude.ai</code> and sign in.</li>
+  <li>Click your initials or avatar in the bottom-left corner, then choose <strong>Settings</strong>.</li>
+  <li>In the left sidebar, choose <strong>Connectors</strong>.</li>
+  <li>Scroll to the bottom and click <strong>Add custom connector</strong>. If you don't see this option, your plan tier doesn't include it — verify you're on Pro or higher.</li>
+  <li>Fill in the form:
+    <ul>
+      <li><strong>Name:</strong> <code>CT Elder Law Research</code> (or anything you like)</li>
+      <li><strong>Remote MCP server URL:</strong>
+        <span class="url-block">https://ct-upm-mcp.fly.dev/mcp</span>
+      </li>
+      <li>Leave OAuth and authentication fields blank — the server is currently open.</li>
+    </ul>
+  </li>
+  <li>Click <strong>Add</strong> or <strong>Save</strong>. Claude will probe the server and list the tools it exposes. You should see <strong>34 tools</strong> across eight prefixes: <code>upm_*</code>, <code>smm_*</code>, <code>court_*</code>, <code>hearing_*</code>, <code>statute_*</code>, <code>cfr_*</code>, <code>regulation_*</code>, and <code>guidance_*</code>.</li>
+</ol>
+
+<h2>Turning it on for a conversation</h2>
+<ol>
+  <li>Start a <strong>new chat</strong> on claude.ai.</li>
+  <li>In the message composer, click the <strong>tools/attachment icon</strong> (paperclip or plus, depending on UI version) and enable the <strong>CT Elder Law Research</strong> connector for that conversation.</li>
+  <li>Ask your question normally. Claude will choose which tools to call.</li>
+</ol>
+
+<h2>What's in the database</h2>
+<div class="corpus">
+
+  <h3>State law and policy</h3>
+  <ul>
+    <li><strong>Connecticut General Statutes</strong> — 2,549 sections covering Title 17b (Social Services / Medicaid), Title 19a (Public Health / nursing homes / hospitals), and Title 45a (Probate Courts / decedents' estates / conservatorship / trusts). Source: cga.ct.gov.</li>
+    <li><strong>Regulations of Connecticut State Agencies (RCSA)</strong> — 751 sections of administrative regulations promulgated by DSS, DPH, and other CT agencies.</li>
+    <li><strong>CT Uniform Policy Manual (UPM)</strong> — 1,632 policy sections plus 266 transmittals — the DSS Medicaid policy manual.</li>
+  </ul>
+
+  <h3>Federal law and policy</h3>
+  <ul>
+    <li><strong>42 CFR</strong> — 1,094 sections of federal Medicaid regulations governing state programs, eligibility, coverage, payment, fair hearings, and managed care.</li>
+    <li><strong>CMS State Medicaid Manual (SMM)</strong> — 62 sections of federal Medicaid policy from CMS Publication 45.</li>
+    <li><strong>CMS sub-regulatory guidance</strong> — 71 documents (State Medicaid Director letters, State Health Official letters, Informational Bulletins, and similar policy guidance).</li>
+  </ul>
+
+  <h3>Decisions and rulings</h3>
+  <ul>
+    <li><strong>CT Appellate and Supreme Court decisions</strong> — 529 Medicaid-relevant opinions, 2003 through 2026, full text.</li>
+    <li><strong>CT Fair Hearing decisions</strong> — approximately 4,385 DSS administrative rulings covering LTSS eligibility, medical assistance, SNAP, and other Medicaid matters.</li>
+  </ul>
+</div>
+
+<h2>Sample prompts that work well</h2>
+<div class="prompts">
+<ul>
+  <li>What is the current asset limit for a community spouse under CT Medicaid? Cite the UPM and statute.</li>
+  <li>Find CT statutes governing transfer of assets and the Medicaid penalty period.</li>
+  <li>Pull up 42 CFR sections on estate recovery.</li>
+  <li>Search fair-hearing decisions where DSS denied a Medicaid application based on an undue-hardship waiver claim.</li>
+  <li>What does the SMM say about treatment of irrevocable trusts created with the applicant's assets?</li>
+  <li>Show me CT appellate cases involving conservator authority to make gifts.</li>
+  <li>Find UPM transmittals issued in the last 12 months affecting Title 19.</li>
+  <li>What recent CMS State Medicaid Director letters address MAGI-based eligibility?</li>
+  <li>Cross-reference CT statute 17b-261a, the corresponding UPM section, and any fair hearings interpreting it.</li>
+</ul>
+</div>
+
+<h2>Useful to know</h2>
+<ul>
+  <li>Tools return formatted excerpts with citations and source links. Ask Claude to "give me the full text of section X" if you need the entire policy or statute.</li>
+  <li>The data is a snapshot. Statutes are current through the most recent scrape from cga.ct.gov, but the Connecticut General Assembly refreshes that site after each legislative session — for post-session changes, the database has to be re-scraped. Always cite-check anything you'll use in a brief, hearing, or filing against the official source.</li>
+  <li>Authoritative sources behind this content: cga.ct.gov (statutes), eregulations.ct.gov (RCSA), portal.ct.gov/dss (UPM), portal.ct.gov/ohro (fair hearings), ecfr.gov (42 CFR), cms.gov (SMM and CMS guidance), jud.ct.gov (court decisions).</li>
+  <li>The endpoint is hosted on Fly.io and is generally up; if Claude reports a connection error, wait a minute and try again.</li>
+</ul>
+
+<div class="callout">
+  <strong>Privacy.</strong> This database contains only public legal research material — no client information, no case files, no privileged content. Anything you type into Claude is governed by your own Claude account's data settings.
+</div>
+
+<div class="signature">
+  Questions or problems &mdash; Stephen B. Keogh &nbsp;&middot;&nbsp; stephen@keogh.law &nbsp;&middot;&nbsp; Keogh.Law &nbsp;&middot;&nbsp; 34 Wall Street, Norwalk, CT 06850
+</div>
+
+</body>
+</html>

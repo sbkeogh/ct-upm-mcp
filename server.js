@@ -88,6 +88,25 @@ function truncate(text, maxLength) {
   return text.length <= maxLength ? text : text.substring(0, maxLength - 3) + '...';
 }
 
+// Windowed full-text read for the *_get tools. A flat 15,000-character cap silently
+// dropped the DECISION section of any hearing over ~2,600 words (found by the Felix
+// Law Watch agent 9/6/26). Callers page with `offset`; `max_chars` up to 60,000.
+const MAX_GET_CHARS = 60000;
+function windowContent(text, args = {}) {
+  const full = text || '';
+  const offset = Math.max(0, parseInt(args.offset || 0, 10) || 0);
+  const max = Math.min(MAX_GET_CHARS, Math.max(1000, parseInt(args.max_chars || MAX_CONTENT_LENGTH, 10) || MAX_CONTENT_LENGTH));
+  const slice = full.substring(offset, offset + max);
+  return {
+    content: slice,
+    content_offset: offset,
+    content_chars: slice.length,
+    total_chars: full.length,
+    truncated: offset + slice.length < full.length,
+    next_offset: offset + slice.length < full.length ? offset + slice.length : null
+  };
+}
+
 function extractSnippet(content, searchTerms, snippetLength = MAX_SNIPPET_LENGTH) {
   if (!content || !searchTerms?.length) return truncate(content, snippetLength);
   const lower = content.toLowerCase();
@@ -225,7 +244,7 @@ const stmts = {
   smmChapterCount: db.prepare('SELECT COUNT(*) as count FROM smm_chapters'),
   // Court decision statements
   searchCourtsFts: db.prepare(`
-    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page,
+    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page, c.pdf_filename,
            c.word_count, c.page_count, c.matched_keywords, rank
     FROM courts_fts fts
     JOIN court_decisions c ON fts.rowid = c.id
@@ -233,7 +252,7 @@ const stmts = {
     ORDER BY rank LIMIT ?
   `),
   searchCourtsFtsCourt: db.prepare(`
-    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page,
+    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page, c.pdf_filename,
            c.word_count, c.page_count, c.matched_keywords, rank
     FROM courts_fts fts
     JOIN court_decisions c ON fts.rowid = c.id
@@ -241,7 +260,7 @@ const stmts = {
     ORDER BY rank LIMIT ?
   `),
   searchCourtsFtsYear: db.prepare(`
-    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page,
+    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page, c.pdf_filename,
            c.word_count, c.page_count, c.matched_keywords, rank
     FROM courts_fts fts
     JOIN court_decisions c ON fts.rowid = c.id
@@ -249,7 +268,7 @@ const stmts = {
     ORDER BY rank LIMIT ?
   `),
   searchCourtsFtsCourtYear: db.prepare(`
-    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page,
+    SELECT c.id, c.case_name, c.court, c.year, c.volume, c.page, c.pdf_filename,
            c.word_count, c.page_count, c.matched_keywords, rank
     FROM courts_fts fts
     JOIN court_decisions c ON fts.rowid = c.id
@@ -257,6 +276,8 @@ const stmts = {
     ORDER BY rank LIMIT ?
   `),
   getCourt: db.prepare('SELECT * FROM court_decisions WHERE pdf_filename = ?'),
+  getCourtByCaseName: db.prepare('SELECT * FROM court_decisions WHERE case_name = ?'),
+  getCourtByCaseNamePrefix: db.prepare('SELECT * FROM court_decisions WHERE case_name LIKE ? ORDER BY year DESC LIMIT 1'),
   getCourtById: db.prepare('SELECT * FROM court_decisions WHERE id = ?'),
   getCourtContent: db.prepare('SELECT content FROM court_decisions WHERE pdf_filename = ?'),
   courtCount: db.prepare('SELECT COUNT(*) as count FROM court_decisions'),
@@ -627,13 +648,15 @@ const TOOLS = [
   },
   {
     name: 'court_get',
-    description: 'Get the full text of a specific CT court decision by PDF filename. Use after searching.',
+    description: 'Get the full text of a specific CT court decision by pdf_filename (from court_search) or case_name. Long decisions: page with offset/max_chars (response carries total_chars, truncated, next_offset).',
     inputSchema: {
       type: 'object',
       properties: {
-        pdf_filename: { type: 'string', description: 'The PDF filename (e.g., "AP229.72.pdf", "332CR71.pdf")' }
-      },
-      required: ['pdf_filename']
+        pdf_filename: { type: 'string', description: 'The PDF filename (e.g., "AP229.72.pdf", "332CR71.pdf") as returned by court_search' },
+        case_name: { type: 'string', description: 'Alternative: the case_name from court_search (e.g., "AC47951 - N.E. Construction Co., LLC v. Anton") or just its docket prefix' },
+        offset: { type: 'integer', description: 'Character offset to start from (default 0); use next_offset from a previous call to read the rest' },
+        max_chars: { type: 'integer', description: 'Characters to return (default 15000, max 60000)' }
+      }
     }
   },
   {
@@ -657,11 +680,13 @@ const TOOLS = [
   },
   {
     name: 'hearing_get',
-    description: 'Get the full text of a specific fair hearing decision by decision number. Use after searching.',
+    description: 'Get the full text of a specific fair hearing decision by decision number. Use after searching. Long decisions: page with offset/max_chars (response carries total_chars, truncated, next_offset).',
     inputSchema: {
       type: 'object',
       properties: {
-        decision_number: { type: 'string', description: 'The decision number (e.g., "LTEL_2024_214656")' }
+        decision_number: { type: 'string', description: 'The decision number (e.g., "LTEL_2024_214656")' },
+        offset: { type: 'integer', description: 'Character offset to start from (default 0); use next_offset from a previous call to read the rest' },
+        max_chars: { type: 'integer', description: 'Characters to return (default 15000, max 60000)' }
       },
       required: ['decision_number']
     }
@@ -1226,8 +1251,13 @@ function handleToolCall(name, args) {
     }
 
     case 'court_get': {
-      const result = stmts.getCourt.get(args.pdf_filename);
-      if (!result) return { error: `Decision ${args.pdf_filename} not found` };
+      // Accept the pdf_filename (canonical) or a case_name as returned by court_search
+      // (exact, then prefix match on the docket, e.g. "AC47951").
+      let result = args.pdf_filename ? stmts.getCourt.get(args.pdf_filename) : null;
+      if (!result && args.case_name) {
+        result = stmts.getCourtByCaseName.get(args.case_name) || stmts.getCourtByCaseNamePrefix.get(args.case_name.split(' ')[0] + '%');
+      }
+      if (!result) return { error: `Decision ${args.pdf_filename || args.case_name || '(no pdf_filename or case_name given)'} not found` };
       return {
         case_name: result.case_name,
         court: result.court,
@@ -1238,7 +1268,7 @@ function handleToolCall(name, args) {
         word_count: result.word_count,
         page_count: result.page_count,
         matched_keywords: result.matched_keywords,
-        content: truncate(result.content, MAX_CONTENT_LENGTH),
+        ...windowContent(result.content, args),
         source_url: result.source_url
       };
     }
@@ -1303,7 +1333,7 @@ function handleToolCall(name, args) {
         title: result.title,
         word_count: result.word_count,
         page_count: result.page_count,
-        content: truncate(result.content, MAX_CONTENT_LENGTH),
+        ...windowContent(result.content, args),
         source_url: result.source_url
       };
     }
